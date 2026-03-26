@@ -1,7 +1,5 @@
 import CPicoSDK
-import CPicoConcurrency
-import Synchronization
-import PSRAM // Optional, only needed if using PSRAM.
+import HAL
 
 @main
 struct App {
@@ -17,6 +15,22 @@ struct App {
         (4, 7, 8, 21)  // D1 (left) ... D4 (right)
     private static let isCommonAnode = true
     private static let blankPattern: UInt8 = 0
+    private static let segmentPins: (GPIOPin, GPIOPin, GPIOPin, GPIOPin, GPIOPin, GPIOPin, GPIOPin, GPIOPin) = (
+        GPIOPin(segmentPinValues.0),
+        GPIOPin(segmentPinValues.1),
+        GPIOPin(segmentPinValues.2),
+        GPIOPin(segmentPinValues.3),
+        GPIOPin(segmentPinValues.4),
+        GPIOPin(segmentPinValues.5),
+        GPIOPin(segmentPinValues.6),
+        GPIOPin(segmentPinValues.7)
+    )
+    private static let digitPins: (GPIOPin, GPIOPin, GPIOPin, GPIOPin) = (
+        GPIOPin(digitPinValues.0),
+        GPIOPin(digitPinValues.1),
+        GPIOPin(digitPinValues.2),
+        GPIOPin(digitPinValues.3)
+    )
 
     static func main() {
         stdio_init_all()
@@ -43,19 +57,17 @@ struct App {
     private static func configurePins() {
         var index = 0
         while index < segmentCount {
-            let pin = segmentPin(index)
-            gpio_init(pin)
-            gpio_set_dir(pin, true)
-            gpio_put(pin, levelForSegment(on: false))
+            let pin = segmentGPIO(index)
+            pin.setDirection(output: true)
+            pin.write(levelForSegment(on: false))
             index += 1
         }
 
         index = 0
         while index < digitCount {
-            let pin = digitPin(index)
-            gpio_init(pin)
-            gpio_set_dir(pin, true)
-            gpio_put(pin, levelForDigit(active: false))
+            let pin = digitGPIO(index)
+            pin.setDirection(output: true)
+            pin.write(levelForDigit(active: false))
             index += 1
         }
     }
@@ -75,15 +87,13 @@ struct App {
     }
 
     private static func renderDigits(_ digits: (Int, Int, Int, Int), durationMs: Int) {
-        let totalUs = durationMs * 1_000
-        var elapsedUs = 0
+        let deadline = nowMs() &+ UInt32(durationMs)
 
-        while elapsedUs < totalUs {
+        while Int32(bitPattern: nowMs() &- deadline) < 0 {
             renderDigit(digits.0, at: 0)
             renderDigit(digits.1, at: 1)
             renderDigit(digits.2, at: 2)
             renderDigit(digits.3, at: 3)
-            elapsedUs += displayRefreshSliceUs * digitCount
         }
 
         disableAllDigits()
@@ -92,16 +102,16 @@ struct App {
     private static func renderDigit(_ digit: Int, at index: Int) {
         disableAllDigits()
         setSegments(pattern: digitFont(for: digit))
-        gpio_put(digitPin(index), levelForDigit(active: true))
+        digitGPIO(index).write(levelForDigit(active: true))
         sleep_us(UInt64(displayRefreshSliceUs))
-        gpio_put(digitPin(index), levelForDigit(active: false))
+        digitGPIO(index).write(levelForDigit(active: false))
     }
 
     private static func setSegments(pattern: UInt8) {
         var index = 0
         while index < segmentCount {
             let isOn = (pattern & (1 << index)) != 0
-            gpio_put(segmentPin(index), levelForSegment(on: isOn))
+            segmentGPIO(index).write(levelForSegment(on: isOn))
             index += 1
         }
     }
@@ -122,33 +132,33 @@ struct App {
         }
     }
 
-    private static func segmentPin(_ index: Int) -> UInt32 {
+    private static func segmentGPIO(_ index: Int) -> GPIOPin {
         switch index {
-        case 0: return segmentPinValues.0
-        case 1: return segmentPinValues.1
-        case 2: return segmentPinValues.2
-        case 3: return segmentPinValues.3
-        case 4: return segmentPinValues.4
-        case 5: return segmentPinValues.5
-        case 6: return segmentPinValues.6
-        default: return segmentPinValues.7
+        case 0: return segmentPins.0
+        case 1: return segmentPins.1
+        case 2: return segmentPins.2
+        case 3: return segmentPins.3
+        case 4: return segmentPins.4
+        case 5: return segmentPins.5
+        case 6: return segmentPins.6
+        default: return segmentPins.7
         }
     }
 
-    private static func digitPin(_ index: Int) -> UInt32 {
+    private static func digitGPIO(_ index: Int) -> GPIOPin {
         switch index {
-        case 0: return digitPinValues.0
-        case 1: return digitPinValues.1
-        case 2: return digitPinValues.2
-        case 3: return digitPinValues.3
-        default: return digitPinValues.3
+        case 0: return digitPins.0
+        case 1: return digitPins.1
+        case 2: return digitPins.2
+        case 3: return digitPins.3
+        default: return digitPins.3
         }
     }
 
     private static func disableAllDigits() {
         var index = 0
         while index < digitCount {
-            gpio_put(digitPin(index), levelForDigit(active: false))
+            digitGPIO(index).write(levelForDigit(active: false))
             index += 1
         }
     }
