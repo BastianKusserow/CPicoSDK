@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = "Example/.build/armv6m-none-none-eabi/release/Example.uf2"
+elf = "Example/.build/armv6m-none-none-eabi/release/Example.elf"

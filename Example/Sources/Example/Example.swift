@@ -3,6 +3,10 @@ import HAL
 
 @main
 struct App {
+    private static let buzzerPin: UInt32 = 22
+    private static let rotaryCLKPin: UInt32 = 11
+    private static let rotaryDTPin: UInt32 = 10
+    private static let rotarySwitchPin: UInt32 = 26
     private static let segmentCount = 8
     private static let digitCount = 4
     private static let displayRefreshSliceUs = 1_000
@@ -31,7 +35,6 @@ struct App {
         GPIOPin(digitPinValues.2),
         GPIOPin(digitPinValues.3)
     )
-
     static func main() {
         stdio_init_all()
 
@@ -42,16 +45,67 @@ struct App {
         print("CYW43 init ok")
 
         configurePins()
-        var countdown: Int = 25 * 60
         print("Starting countdown")
-        while countdown > 0 {
-            renderCountdown(secondsRemaining: countdown, durationMs: countdownTickMs)
-            countdown -= 1
+        var countdown = 25 * 60
+        var isActive = false
+        var rotaryValue = 0
+        let buzzer = PWMChannel(gpio: buzzerPin)
+        let rotary = RotaryEncoder<4>(clk: rotaryCLKPin, dt: rotaryDTPin, sw: rotarySwitchPin)
+
+        rotary.addHandler { change in
+            switch change {
+            case .clockwise:
+                buzz(channel: buzzer, frequencyHz: 1760, durationMs: 20)
+                countdown += 60
+                countdown -= countdown % 60
+                isActive = false
+                rotaryValue += 1
+                print("Rotary CW \(rotaryValue) countdown=\(countdown)")
+
+            case .counterClockwise:
+                buzz(channel: buzzer, frequencyHz: 880, durationMs: 20)
+                if countdown > 60 {
+                    countdown -= 60
+                }
+                countdown -= countdown % 60
+                isActive = false
+                rotaryValue -= 1
+                print("Rotary CCW \(rotaryValue) countdown=\(countdown)")
+
+            case .switchPressed:
+                if countdown <= 0 {
+                    countdown = 25 * 60
+                } else {
+                    isActive.toggle()
+                }
+                buzz(channel: buzzer, frequencyHz: 1320, durationMs: 40)
+                print("Switch pressed isActive=\(isActive) countdown=\(countdown)")
+
+            case .switchReleased:
+                print("Switch released")
+            }
         }
 
-        while true {
-            renderDigits((0, 0, 0, 0), durationMs: countdownTickMs)
+        Runtime.run {
+            if countdown > 0 {
+                renderCountdown(secondsRemaining: countdown, durationMs: countdownTickMs)
+                if isActive {
+                    countdown -= 1
+                }
+                return
+            }
+
+            renderIdle(durationMs: countdownTickMs)
         }
+    }
+
+    private static func buzz(channel: PWMChannel, frequencyHz: UInt32, durationMs: UInt32) {
+        channel.setFrequency(frequencyHz)
+        channel.setDuty16(UInt16.max / 2)
+        channel.setEnabled(true)
+        Runtime.sleep(ms: durationMs)
+        channel.setEnabled(false)
+        channel.setDuty16(0)
     }
 
     private static func configurePins() {
@@ -90,6 +144,7 @@ struct App {
         let deadline = nowMs() &+ UInt32(durationMs)
 
         while Int32(bitPattern: nowMs() &- deadline) < 0 {
+            Runtime.service()
             renderDigit(digits.0, at: 0)
             renderDigit(digits.1, at: 1)
             renderDigit(digits.2, at: 2)
@@ -105,6 +160,10 @@ struct App {
         digitGPIO(index).write(levelForDigit(active: true))
         sleep_us(UInt64(displayRefreshSliceUs))
         digitGPIO(index).write(levelForDigit(active: false))
+    }
+
+    private static func renderIdle(durationMs: Int) {
+        renderDigits((0, 0, 0, 0), durationMs: durationMs)
     }
 
     private static func setSegments(pattern: UInt8) {

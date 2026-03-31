@@ -2,64 +2,43 @@ import CPicoSDK
 
 public typealias GPIOIRQHandler = (UInt32, UInt32) -> Void
 
-@_silgen_name("register_swift_gpio_irq_callback")
-public func register_swift_gpio_irq_callback(_ gpio: UInt32, _ events: UInt32, _ enabled: Bool)
+private let maxIRQHandlers = 8
+private let irqQueueCapacity = 32
 
-@_silgen_name("swift_save_and_disable_interrupts")
-private func swift_save_and_disable_interrupts() -> UInt32
+private struct Handler {
+    let pin: UInt32
+    let edge: Edge
+    let handler: GPIOIRQHandler
+}
 
-@_silgen_name("swift_restore_interrupts")
-private func swift_restore_interrupts(_ status: UInt32)
-
-@_silgen_name("swift_gpio_irq_pop")
-private func swift_gpio_irq_pop(_ gpio: UnsafeMutablePointer<UInt32>, _ events: UnsafeMutablePointer<UInt32>) -> Bool
-
-@_silgen_name("swift_gpio_irq_queue_overflowed")
-private func swift_gpio_irq_queue_overflowed() -> Bool
+private nonisolated(unsafe) var irqHandlers = FixedOptionalSlots<8, Handler>()
+private nonisolated(unsafe) var irqQueue = RingBuffer<32, (UInt32, UInt32)>()
 
 @inline(__always)
 private func withInterruptsDisabled<T>(_ body: () -> T) -> T {
-    let state = swift_save_and_disable_interrupts()
+    let state = save_and_disable_interrupts()
     let result = body()
-    swift_restore_interrupts(state)
+    restore_interrupts(state)
     return result
 }
 
-private let maxIRQHandlers = 4
-private nonisolated(unsafe) var irqHandlers: (Handler?, Handler?, Handler?, Handler?) = (nil, nil, nil, nil)
+@_cdecl("swift_gpio_irq_callback")
+private func swiftGPIOIRQCallback(_ gpio: UInt32, _ events: UInt32) {
+    _ = irqQueue.push((gpio, events))
+}
 
 private func insertHandler(_ handler: Handler) -> Bool {
-    if irqHandlers.0 == nil {
-        irqHandlers.0 = handler
-        return true
-    }
-    if irqHandlers.1 == nil {
-        irqHandlers.1 = handler
-        return true
-    }
-    if irqHandlers.2 == nil {
-        irqHandlers.2 = handler
-        return true
-    }
-    if irqHandlers.3 == nil {
-        irqHandlers.3 = handler
-        return true
-    }
-    return false
+    irqHandlers.insertFirstEmpty(handler)
 }
 
 private func forEachHandler(_ body: (Handler) -> Void) {
-    if let h = irqHandlers.0 { body(h) }
-    if let h = irqHandlers.1 { body(h) }
-    if let h = irqHandlers.2 { body(h) }
-    if let h = irqHandlers.3 { body(h) }
+    irqHandlers.forEach(body)
 }
 
 @discardableResult
 public func gpioOnIRQ(pin: UInt32, edge: Edge, handler: @escaping GPIOIRQHandler) -> Bool {
     let inserted = withInterruptsDisabled {
-        let handler = Handler(pin: pin, edge: edge, handler: handler)
-        return insertHandler(handler)
+        insertHandler(Handler(pin: pin, edge: edge, handler: handler))
     }
 
     guard inserted else {
@@ -67,28 +46,26 @@ public func gpioOnIRQ(pin: UInt32, edge: Edge, handler: @escaping GPIOIRQHandler
         return false
     }
 
-    register_swift_gpio_irq_callback(pin, edge.picoMask, true)
+    gpio_set_irq_enabled_with_callback(pin, edge.picoMask, true, swiftGPIOIRQCallback)
     return true
 }
 
 public func pollGPIOIRQs() {
-    var gpio: UInt32 = 0
-    var events: UInt32 = 0
-    while swift_gpio_irq_pop(&gpio, &events) {
-        forEachHandler { h in
-            if h.pin == gpio && (h.edge.picoMask & events) != 0 {
-                h.handler(gpio, events)
+    while true {
+        let next = withInterruptsDisabled { irqQueue.pop() }
+
+        guard let (gpio, events) = next else {
+            return
+        }
+
+        forEachHandler { handler in
+            if handler.pin == gpio && (handler.edge.picoMask & events) != 0 {
+                handler.handler(gpio, events)
             }
         }
     }
 }
 
 public func gpioIRQQueueOverflowed() -> Bool {
-    swift_gpio_irq_queue_overflowed()
-}
-
-struct Handler {
-    let pin: UInt32
-    let edge: Edge
-    let handler: GPIOIRQHandler
+    irqQueue.overflowed
 }

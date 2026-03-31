@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "author": "Anonymous maker",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-pi-pico-w", "id": "pico", "top": 92.75, "left": 3.55, "attrs": {} },
+    {
+      "type": "wokwi-7segment",
+      "id": "sevseg1",
+      "top": -109.38,
+      "left": -75.68,
+      "attrs": { "digits": "4", "common": "anode" }
+    },
+    { "type": "wokwi-ky-040", "id": "encoder1", "top": -84.7, "left": 152.8, "attrs": {} },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": 40.8,
+      "left": 357,
+      "attrs": { "volume": "0.1" }
+    }
+  ],
+  "connections": [
+    [ "pico:GP0", "$serialMonitor:RX", "", [] ],
+    [ "pico:GP1", "$serialMonitor:TX", "", [] ],
+    [ "pico:GP5", "sevseg1:A", "green", [ "h-111.65", "v-297.6", "h102.05" ] ],
+    [ "pico:GP6", "sevseg1:F", "green", [ "v-38.4", "h-134.4", "v233.65" ] ],
+    [ "pico:GP9", "sevseg1:B", "green", [ "v-76.8", "h-201.6", "v300.85" ] ],
+    [ "sevseg1:DIG1", "pico:GP4", "green", [ "v-9.6", "h-76.79", "v176.05" ] ],
+    [ "sevseg1:DIG2", "pico:GP7", "green", [ "v-48", "h-153.6", "v252.85" ] ],
+    [ "sevseg1:DIG3", "pico:GP8", "green", [ "h-150.05", "v-374.4", "h169.25" ] ],
+    [ "sevseg1:DIG4", "pico:GP21", "green", [ "v18.36", "h67.2", "v156.85" ] ],
+    [ "pico:GP16", "sevseg1:E", "green", [ "v37.56", "h124.81", "v287.96" ] ],
+    [ "pico:GP17", "sevseg1:D", "green", [ "v47.16", "h134.4", "v268.76" ] ],
+    [ "pico:GP18", "sevseg1:DP", "green", [ "v27.96", "h144", "v268.76" ] ],
+    [ "pico:GP19", "sevseg1:C", "green", [ "h19.51", "v-230.36", "h-76.8" ] ],
+    [ "pico:GP20", "sevseg1:G", "green", [ "v75.96", "h134.4", "v201.6" ] ],
+    [ "encoder1:DT", "pico:GP10", "green", [ "h57.6", "v403.3", "h-355.2", "v-105.6" ] ],
+    [ "pico:GP26", "encoder1:SW", "green", [ "h48", "v249.7", "h-240.31" ] ],
+    [ "encoder1:CLK", "pico:GP11", "green", [ "h38.4", "v384.1", "h-326.4", "v-86.4" ] ],
+    [ "encoder1:GND", "pico:GND.7", "black", [ "v212", "h-192.31" ] ],
+    [ "encoder1:VCC", "pico:VSYS", "red", [ "h28.8", "v163.6", "h-221.11" ] ],
+    [ "bz1:1", "pico:GND.6", "green", [ "v0" ] ],
+    [ "bz1:2", "pico:GP22", "green", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}
